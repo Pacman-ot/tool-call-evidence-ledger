@@ -1,154 +1,86 @@
 # Tool Call Evidence Ledger
 
-Tamper-evident **tool-call evidence ledger** for agentic AI systems.
+A Python library and research prototype for **verifiable, tamper-evident tool use** in agentic AI systems.
 
-Primary guarantees (kept separate):
+When an LLM agent calls tools (calculators, databases, APIs) and then answers a question, two separate problems appear:
 
-1. **Integrity** — recorded tool traces form a SHA-256 linear hash chain (`GENESIS_V1` → …).
-2. **Faithfulness** — atomic claims in a final answer are checked against that trace (structured matcher first, optional LLM judge).
+1. **Did anyone alter the recorded tool trace after the fact?**  
+2. **Do the claims in the final answer actually follow from that trace?**
 
-Backend / library only — **no frontend**.
+This project addresses both — and keeps them separate on purpose.
+
+| Guarantee | What it means | What it does *not* mean |
+|-----------|---------------|-------------------------|
+| **Integrity** | Tool-call records form a SHA-256 linear hash chain (`GENESIS_V1` → entry₁ → …). Tampering with fields, order, or links is detectable via `verify` / `verify_chain`. | Cryptographic non-repudiation, or protection against a full rewrite of every entry *with recomputed hashes* unless an external chain-head checkpoint exists. |
+| **Claim support (faithfulness)** | Atomic claims in an answer are checked against the ledger (structured matcher first; optional LLM judge on unresolved claims). | That the tools themselves told the truth, or that hallucination is impossible in general. |
+
+**Who it’s for:** researchers and engineers building or evaluating agent tool-calling pipelines who need a concrete evidence trail and a hybrid verifier — not a frontend product. Backend / library only (**no UI**).
+
+**Specs (normative):** [`docs/SRS.md`](docs/SRS.md) · [`docs/architecture.md`](docs/architecture.md) · [`docs/developer_guide.md`](docs/developer_guide.md)  
+**Guides & reference:** [`docs/index.md`](docs/index.md)
+
+Live HTTP demo (ephemeral storage): https://tool-call-evidence-ledger.vercel.app
+
+---
 
 ## Install
 
+Requires **Python ≥ 3.11**.
+
 ```bash
-# Core (minimal deps: pydantic only)
+# Core library (minimal dependency: pydantic)
 pip install "git+https://github.com/NoteAditya/tool-call-evidence-ledger.git"
 
-# With FastAPI / Vercel handler
+# With FastAPI / Mangum (HTTP API + Vercel handler)
 pip install "tool-call-evidence-ledger[api] @ git+https://github.com/NoteAditya/tool-call-evidence-ledger.git"
-
-# Optional extras
-#   [api]     FastAPI + uvicorn + mangum
-#   [cli]     Typer CLI (`ledger` command)
-#   [openai]  OpenAI-backed claim judge
-#   [dev]     pytest + httpx + api/cli/openai
-#   [all]     api + cli + openai
 ```
 
-Editable (from a clone):
+| Extra | Adds |
+|-------|------|
+| `[api]` | FastAPI, uvicorn, mangum, python-dotenv |
+| `[cli]` | Typer CLI (`ledger` entry point) |
+| `[openai]` | OpenAI client for the optional LLM judge |
+| `[dev]` | pytest, httpx, plus api/cli/openai |
+| `[all]` | api + cli + openai |
+
+From a clone:
 
 ```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+cp .env.example .env   # optional
 ```
+
+---
 
 ## Quickstart
 
 ```python
 from evidence_ledger import EvidenceLedger, verify_chain, verify_answer
 
-ledger = EvidenceLedger()          # SQLite under ./data/ledger.db by default
-session = ledger.session()         # creates session + ensures schema
+ledger = EvidenceLedger()       # SQLite at ./data/ledger.db by default
+session = ledger.session()      # new session_id + schema init
 
 @session.tool
 def lookup(key: str) -> dict:
     return {"orders": 42}[key]
 
 lookup("orders")
+
 print(verify_chain(session.session_id, ledger))
 print(verify_answer(session.session_id, "There are 42 orders.", ledger))
 ```
 
-Equivalent one-liner without a bound session:
+More patterns: [`examples/`](examples/) · [Integration guides](docs/integration.md).
 
-```python
-from evidence_ledger import EvidenceLedger, wrap_tool
+---
 
-ledger = EvidenceLedger()
-sid = ledger.create_session()
-ledger.init()
+## Documentation
 
-@wrap_tool(ledger, sid)
-def search(q: str) -> dict:
-    return {"hits": []}
-```
+Start at **[`docs/index.md`](docs/index.md)** for the full table of contents (overview, architecture, hash chain, claim pipeline, tools, API/CLI/HTTP references, evaluation, deployment, security, contributing).
 
-See `examples/plain_agent.py`, `examples/openai_tools_style.py`, and `examples/langchain_style.py`.
+---
 
-## Public API
+## License
 
-| Symbol | Role |
-|--------|------|
-| `EvidenceLedger` | Append / list / verify hash chain; `.session()`, `.tool(session_id)` |
-| `wrap_tool` / `@session.tool` | Record any Python callable |
-| `ToolAdapter` | Dict-args invoke (OpenAI function-calling style) |
-| `verify_chain` / `verify_answer` | Integrity + hybrid claim verification |
-| `SQLiteStorage` / `JSONLStorage` / `create_storage` | Pluggable backends |
-| `HybridVerifier` | `from evidence_ledger.claims import HybridVerifier` |
-
-Package is typed (`py.typed`). Version: `evidence_ledger.__version__`.
-
-## CLI (extra: `[cli]`)
-
-```bash
-pip install -e ".[cli]"
-ledger init
-ledger run --scenario S-001
-ledger verify --session <SESSION_ID>
-verify answer --session <SESSION_ID> --input answer.txt
-```
-
-## HTTP API (extra: `[api]`)
-
-```bash
-pip install -e ".[api]"
-uvicorn evidence_ledger.api:app --reload --port 8000
-curl http://127.0.0.1:8000/health
-```
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/health` | Liveness |
-| POST | `/sessions` | Create session id |
-| POST | `/tools/invoke` | Run toy tool + append ledger entry |
-| GET | `/ledger/{session_id}` | Inspect entries |
-| GET | `/ledger/{session_id}/verify` | Hash-chain verification |
-| POST | `/verify/answer` | Hybrid claim verification |
-
-Deployed API: https://tool-call-evidence-ledger.vercel.app
-
-Redeploy (folds `[api]` deps into a staging pyproject for Vercel’s uv installer):
-
-```bash
-./scripts/deploy_vercel.sh
-```
-
-## Storage
-
-- **Local default:** SQLite at `./data/ledger.db` (`LEDGER_STORAGE_BACKEND=sqlite`).
-- **Vercel:** when `VERCEL=1`, default path becomes `/tmp/ledger.db` (ephemeral).
-- **JSONL:** `LEDGER_STORAGE_BACKEND=jsonl`.
-
-Paid durable storage is not provisioned unless you ask.
-
-## Architecture
-
-```
-@session.tool / ToolAdapter → EvidenceLedger (SQLite + SHA-256 chain)
-Agent answer → HeuristicDecomposer → StructuredMatcher → (optional) LLMJudge
-             ↳ HybridVerifier report (verdict + evidence pointers)
-```
-
-Toy tools shipped for demos: `calculator`, `lookup_db`, `fake_weather`.
-
-## Spec decisions
-
-| Decision | Choice |
-|----------|--------|
-| Language | Python ≥ 3.11 |
-| Hash | SHA-256 |
-| Genesis | literal `GENESIS_V1` |
-| Canonicalization | Deterministic sorted-key JSON (RFC 8785-inspired) |
-| Matcher first | Yes; judge only on unresolved claims |
-| LLM judge | Stub by default; OpenAI via `[openai]` + `LLM_JUDGE_ENABLED` |
-| Interface | Library + optional CLI/API; no UI |
-
-## Docs
-
-- `docs/SRS.md`
-- `docs/architecture.md`
-- `docs/developer_guide.md`
-
-## Threat model (short)
-
-A full rewrite of every entry with recomputed hashes can look internally valid unless a trusted chain-head checkpoint is stored elsewhere. Anchoring is future work.
+MIT (see `pyproject.toml`). Research prototype — see [limitations & threat model](docs/security.md).
