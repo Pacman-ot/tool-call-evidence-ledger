@@ -15,3 +15,5 @@ results/*.json
 dist/
 build/
 *.log
+.vercel
+.env*
