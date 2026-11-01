@@ -1,5 +1,5 @@
-# Vercel / serverless: install the package with the API extra.
-# Mirrors pyproject.toml [project.optional-dependencies].api + core.
+# Deploy / serverless runtime (Vercel installs this file).
+# Library consumers: prefer pip install with extras from pyproject.toml.
 pydantic>=2.7.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
