@@ -107,6 +107,12 @@ curl http://127.0.0.1:8000/health
 
 Deployed API: https://tool-call-evidence-ledger.vercel.app
 
+Redeploy (folds `[api]` deps into a staging pyproject for Vercel’s uv installer):
+
+```bash
+./scripts/deploy_vercel.sh
+```
+
 ## Storage
 
 - **Local default:** SQLite at `./data/ledger.db` (`LEDGER_STORAGE_BACKEND=sqlite`).
