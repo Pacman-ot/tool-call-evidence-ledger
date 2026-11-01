@@ -1,9 +1,7 @@
+# Vercel / serverless: install the package with the API extra.
+# Mirrors pyproject.toml [project.optional-dependencies].api + core.
+pydantic>=2.7.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
-pydantic>=2.7.0
-pydantic-settings>=2.3.0
-typer>=0.12.0
-python-dotenv>=1.0.0
 mangum>=0.19.0
-pytest>=8.0.0
-httpx>=0.27.0
+python-dotenv>=1.0.0

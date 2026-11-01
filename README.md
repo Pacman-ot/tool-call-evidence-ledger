@@ -1,45 +1,100 @@
 # Tool Call Evidence Ledger
 
-Research prototype for **verifiable, tamper-evident tool use** in agentic systems.
+Tamper-evident **tool-call evidence ledger** for agentic AI systems.
 
 Primary guarantees (kept separate):
 
 1. **Integrity** — recorded tool traces form a SHA-256 linear hash chain (`GENESIS_V1` → …).
-2. **Faithfulness** — atomic claims in a final answer are checked against that trace (structured matcher first, LLM judge fallback).
+2. **Faithfulness** — atomic claims in a final answer are checked against that trace (structured matcher first, optional LLM judge).
 
-This repository implements the **backend / architecture** from the project SRS, Architecture, and Developer Guide. **No frontend.**
+Backend / library only — **no frontend**.
 
-## Quick start
+## Install
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env
+# Core (minimal deps: pydantic only)
+pip install "git+https://github.com/NoteAditya/tool-call-evidence-ledger.git"
 
-ledger init
-pytest -q
+# With FastAPI / Vercel handler
+pip install "tool-call-evidence-ledger[api] @ git+https://github.com/NoteAditya/tool-call-evidence-ledger.git"
+
+# Optional extras
+#   [api]     FastAPI + uvicorn + mangum
+#   [cli]     Typer CLI (`ledger` command)
+#   [openai]  OpenAI-backed claim judge
+#   [dev]     pytest + httpx + api/cli/openai
+#   [all]     api + cli + openai
 ```
 
-### CLI
+Editable (from a clone):
 
 ```bash
+pip install -e ".[dev]"
+```
+
+## Quickstart
+
+```python
+from evidence_ledger import EvidenceLedger, verify_chain, verify_answer
+
+ledger = EvidenceLedger()          # SQLite under ./data/ledger.db by default
+session = ledger.session()         # creates session + ensures schema
+
+@session.tool
+def lookup(key: str) -> dict:
+    return {"orders": 42}[key]
+
+lookup("orders")
+print(verify_chain(session.session_id, ledger))
+print(verify_answer(session.session_id, "There are 42 orders.", ledger))
+```
+
+Equivalent one-liner without a bound session:
+
+```python
+from evidence_ledger import EvidenceLedger, wrap_tool
+
+ledger = EvidenceLedger()
+sid = ledger.create_session()
+ledger.init()
+
+@wrap_tool(ledger, sid)
+def search(q: str) -> dict:
+    return {"hits": []}
+```
+
+See `examples/plain_agent.py`, `examples/openai_tools_style.py`, and `examples/langchain_style.py`.
+
+## Public API
+
+| Symbol | Role |
+|--------|------|
+| `EvidenceLedger` | Append / list / verify hash chain; `.session()`, `.tool(session_id)` |
+| `wrap_tool` / `@session.tool` | Record any Python callable |
+| `ToolAdapter` | Dict-args invoke (OpenAI function-calling style) |
+| `verify_chain` / `verify_answer` | Integrity + hybrid claim verification |
+| `SQLiteStorage` / `JSONLStorage` / `create_storage` | Pluggable backends |
+| `HybridVerifier` | `from evidence_ledger.claims import HybridVerifier` |
+
+Package is typed (`py.typed`). Version: `evidence_ledger.__version__`.
+
+## CLI (extra: `[cli]`)
+
+```bash
+pip install -e ".[cli]"
 ledger init
 ledger run --scenario S-001
-ledger inspect --session scenario-S-001   # session id printed by run
 ledger verify --session <SESSION_ID>
 verify answer --session <SESSION_ID> --input answer.txt
-evaluate --dataset data/scenarios.jsonl
 ```
 
-### HTTP API (local)
+## HTTP API (extra: `[api]`)
 
 ```bash
+pip install -e ".[api]"
 uvicorn evidence_ledger.api:app --reload --port 8000
 curl http://127.0.0.1:8000/health
 ```
-
-Key routes:
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -50,37 +105,37 @@ Key routes:
 | GET | `/ledger/{session_id}/verify` | Hash-chain verification |
 | POST | `/verify/answer` | Hybrid claim verification |
 
-## Storage note (Vercel)
+Deployed API: https://tool-call-evidence-ledger.vercel.app
 
-Vercel’s filesystem is **ephemeral**. Storage is pluggable:
+## Storage
 
 - **Local default:** SQLite at `./data/ledger.db` (`LEDGER_STORAGE_BACKEND=sqlite`).
-- **Vercel:** when `VERCEL=1`, the default path becomes `/tmp/ledger.db` (lost between cold starts).
-- **JSONL:** set `LEDGER_STORAGE_BACKEND=jsonl` and point `LEDGER_DB_PATH` at a file.
+- **Vercel:** when `VERCEL=1`, default path becomes `/tmp/ledger.db` (ephemeral).
+- **JSONL:** `LEDGER_STORAGE_BACKEND=jsonl`.
 
-Paid durable storage (Vercel Blob, Neon, etc.) is **not** provisioned unless you ask.
+Paid durable storage is not provisioned unless you ask.
 
-## Architecture (backend)
+## Architecture
 
 ```
-ToolAdapter → EvidenceLedger (SQLite + SHA-256 chain)
+@session.tool / ToolAdapter → EvidenceLedger (SQLite + SHA-256 chain)
 Agent answer → HeuristicDecomposer → StructuredMatcher → (optional) LLMJudge
              ↳ HybridVerifier report (verdict + evidence pointers)
 ```
 
-Toy tools: `calculator`, `lookup_db`, `fake_weather`.
+Toy tools shipped for demos: `calculator`, `lookup_db`, `fake_weather`.
 
-## Spec decisions frozen here
+## Spec decisions
 
 | Decision | Choice |
 |----------|--------|
 | Language | Python ≥ 3.11 |
-| Hash | Hard-coded SHA-256 |
-| Genesis marker | literal `GENESIS_V1` |
-| Canonicalization | Deterministic sorted-key JSON (RFC 8785-inspired), NaN/Inf rejected |
-| Matcher first | Yes; judge only on `UNRESOLVED` |
-| LLM judge | Interface + deterministic stub; OpenAI optional via `LLM_JUDGE_ENABLED` |
-| Interface | CLI + FastAPI API for deploy; no UI |
+| Hash | SHA-256 |
+| Genesis | literal `GENESIS_V1` |
+| Canonicalization | Deterministic sorted-key JSON (RFC 8785-inspired) |
+| Matcher first | Yes; judge only on unresolved claims |
+| LLM judge | Stub by default; OpenAI via `[openai]` + `LLM_JUDGE_ENABLED` |
+| Interface | Library + optional CLI/API; no UI |
 
 ## Docs
 
@@ -90,4 +145,4 @@ Toy tools: `calculator`, `lookup_db`, `fake_weather`.
 
 ## Threat model (short)
 
-A full rewrite of every entry + recomputed hashes can look internally valid unless a trusted chain-head checkpoint is stored elsewhere. That anchoring is documented as future work.
+A full rewrite of every entry with recomputed hashes can look internally valid unless a trusted chain-head checkpoint is stored elsewhere. Anchoring is future work.

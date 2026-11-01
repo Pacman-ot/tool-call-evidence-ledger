@@ -184,3 +184,24 @@ class EvidenceLedger:
             entries_checked=len(entries),
             chain_head=expected_previous,
         )
+
+    def session(self, session_id: str | None = None) -> "BoundSession":
+        """Create/bind a session and return a handle with ``@session.tool``."""
+        from evidence_ledger.integration import BoundSession
+
+        sid = self.create_session(session_id)
+        self.init()
+        return BoundSession(self, sid)
+
+    def tool(
+        self,
+        session_id: str,
+        *,
+        name: str | None = None,
+        reraise: bool = True,
+    ):
+        """Decorator: ``@ledger.tool(session_id)`` records every call."""
+        from evidence_ledger.integration import wrap_tool
+
+        return wrap_tool(self, session_id, name=name, reraise=reraise)
+
