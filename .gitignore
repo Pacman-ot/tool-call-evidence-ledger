@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.env
+.DS_Store
+data/*.db
+data/*.sqlite*
+results/*.csv
+results/*.json
+!results/.gitkeep
+.vercel/
+.python-version
+dist/
+build/
+*.log

@@ -1,0 +1,8 @@
+{"scenario_id": "S-001", "domain": "orders", "tool_calls": [{"tool": "lookup_db", "args": {"key": "orders"}}], "answer": "The lookup returned 42 records."}
+{"scenario_id": "S-002", "domain": "orders", "tool_calls": [{"tool": "lookup_db", "args": {"key": "orders"}}], "answer": "The lookup returned 52 records."}
+{"scenario_id": "S-003", "domain": "incidents", "tool_calls": [{"tool": "lookup_db", "args": {"key": "incidents"}}], "answer": "The value increased by 20%."}
+{"scenario_id": "S-004", "domain": "incidents", "tool_calls": [{"tool": "lookup_db", "args": {"key": "incidents"}}], "answer": "The service is experiencing reduced performance."}
+{"scenario_id": "S-005", "domain": "weather", "tool_calls": [{"tool": "fake_weather", "args": {"city": "blr"}}], "answer": "Bangalore is sunny at 27 degrees."}
+{"scenario_id": "S-006", "domain": "calc", "tool_calls": [{"tool": "calculator", "args": {"op": "add", "a": 10, "b": 5}}], "answer": "The calculator result is 15."}
+{"scenario_id": "S-007", "domain": "incidents", "tool_calls": [{"tool": "lookup_db", "args": {"key": "incidents"}}], "answer": "There were 10 days between the start and end."}
+{"scenario_id": "S-008", "domain": "orders", "tool_calls": [{"tool": "lookup_db", "args": {"key": "orders"}}, {"tool": "calculator", "args": {"op": "mul", "a": 42, "b": 2}}], "answer": "The lookup returned 42 records. The calculator result is 84."}
