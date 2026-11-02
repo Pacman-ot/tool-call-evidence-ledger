@@ -4,7 +4,13 @@
   "builds": [
     {
       "src": "api/index.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "src/evidence_ledger/static/**",
+          "src/evidence_ledger/**"
+        ]
+      }
     }
   ],
   "routes": [

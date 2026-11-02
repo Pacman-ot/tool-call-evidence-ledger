@@ -33,12 +33,22 @@ app = FastAPI(
 )
 
 
-def _project_root() -> Path:
-    # src/evidence_ledger/api.py -> repo root
-    return Path(__file__).resolve().parents[2]
+def _static_dir() -> Path:
+    """Demo assets ship inside the package so Vercel file-tracing includes them."""
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here / "static",
+        here.parents[1] / "static",  # fallback
+        Path.cwd() / "src" / "evidence_ledger" / "static",
+        Path.cwd() / "public",
+    ]
+    for c in candidates:
+        if (c / "index.html").exists():
+            return c
+    return candidates[0]
 
 
-PUBLIC_DIR = _project_root() / "public"
+PUBLIC_DIR = _static_dir()
 
 
 def get_ledger() -> EvidenceLedger:
