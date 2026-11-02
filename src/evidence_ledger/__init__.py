@@ -30,6 +30,7 @@ from evidence_ledger.models import (
 )
 from evidence_ledger.storage import (
     JSONLStorage,
+    MemoryStorage,
     SQLiteStorage,
     StorageBackend,
     create_storage,
@@ -53,6 +54,7 @@ __all__ = [
     "StorageBackend",
     "SQLiteStorage",
     "JSONLStorage",
+    "MemoryStorage",
     "create_storage",
     # Models (common)
     "LedgerEntry",

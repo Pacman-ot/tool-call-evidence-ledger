@@ -276,10 +276,67 @@ class JSONLStorage(StorageBackend):
             self._write_all(entries)
 
 
-def create_storage(backend: str, path: Path | str) -> StorageBackend:
+def create_storage(backend: str, path: Path | str | None = None) -> StorageBackend:
     backend = backend.lower().strip()
     if backend == "sqlite":
+        if path is None:
+            raise ValueError("sqlite backend requires a path")
         return SQLiteStorage(path)
     if backend == "jsonl":
+        if path is None:
+            raise ValueError("jsonl backend requires a path")
         return JSONLStorage(path)
+    if backend in {"memory", "mem", "ephemeral"}:
+        return MemoryStorage()
     raise ValueError(f"unknown storage backend: {backend}")
+
+
+class MemoryStorage(StorageBackend):
+    """In-process store for a single request / demo. Survives no cold starts."""
+
+    def __init__(self, entries: list[LedgerEntry] | None = None) -> None:
+        self._lock = threading.RLock()
+        self._entries: list[LedgerEntry] = list(entries or [])
+
+    def init_schema(self) -> None:
+        return None
+
+    def append_entry(self, entry: LedgerEntry) -> LedgerEntry:
+        with self._lock:
+            self._entries.append(entry)
+            return entry
+
+    def get_latest(self, session_id: str) -> LedgerEntry | None:
+        with self._lock:
+            matched = [e for e in self._entries if e.session_id == session_id]
+            return max(matched, key=lambda e: e.sequence_no) if matched else None
+
+    def list_entries(self, session_id: str) -> list[LedgerEntry]:
+        with self._lock:
+            matched = [e for e in self._entries if e.session_id == session_id]
+            return sorted(matched, key=lambda e: e.sequence_no)
+
+    def get_entry(self, entry_id: str) -> LedgerEntry | None:
+        with self._lock:
+            for e in self._entries:
+                if e.entry_id == entry_id:
+                    return e
+            return None
+
+    def update_entry_raw(self, entry_id: str, **fields: Any) -> None:
+        with self._lock:
+            for i, e in enumerate(self._entries):
+                if e.entry_id == entry_id:
+                    data = e.model_dump()
+                    data.update(fields)
+                    self._entries[i] = LedgerEntry.model_validate(data)
+                    return
+            raise KeyError(entry_id)
+
+    def delete_entry(self, entry_id: str) -> None:
+        with self._lock:
+            self._entries = [e for e in self._entries if e.entry_id != entry_id]
+
+    def all_entries(self) -> list[LedgerEntry]:
+        with self._lock:
+            return list(self._entries)

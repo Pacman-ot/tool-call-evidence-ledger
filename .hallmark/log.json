@@ -1,0 +1,20 @@
+[
+  {
+    "shape": "app screen",
+    "theme": "console",
+    "axes": "dark/grotesk-sans/chromatic-amber",
+    "hero": null,
+    "nav": "top bar wordmark + docs",
+    "footer": "version line",
+    "imagery": "none",
+    "photos": [],
+    "entry": "evidence-ledger-demo",
+    "fingerprint": "console-audit-trail-demo",
+    "sections": ["question", "tools", "trail", "verify", "tamper", "claims"],
+    "signature": "hash-chained ledger trail",
+    "waived": [],
+    "prompt": "simple UI demo for tool-call evidence ledger",
+    "scope": "app",
+    "dealt": "3/3, seed developer-tool-demo-walks-9b20·cc16a5c2·2026-11-02·r0"
+  }
+]

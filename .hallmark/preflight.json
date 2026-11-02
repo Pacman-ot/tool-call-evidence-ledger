@@ -1,0 +1,12 @@
+{
+  "scanned": "2026-11-02",
+  "findings": {
+    "fonts": "none (vanilla Python/FastAPI project)",
+    "palette": "none",
+    "motion": "none",
+    "spacing": "none",
+    "framework": "FastAPI + Vercel Python serverless; no frontend yet"
+  },
+  "preserve": [],
+  "introduce": ["Hallmark Console theme", "app-screen demo UI", "tokens.css", "stateless demo API"]
+}

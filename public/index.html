@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tool Call Evidence Ledger : live demo</title>
+  <meta name="description" content="Walk a SHA-256 hash-chained tool-call ledger: record, verify, tamper, and check answer claims." />
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+  <link href="https://api.fontshare.com/v2/css?f[]=host-grotesk@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/demo.css" />
+  <style>
+    /* fallback mono if Atkinson Hyperlegible Mono is unavailable */
+    :root { --font-outlier: "IBM Plex Mono", ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="wordmark">Evidence Ledger</div>
+      <nav class="topbar-links" aria-label="Secondary">
+        <a href="/docs">API docs</a>
+        <a href="/health">Health</a>
+        <a href="https://github.com/Pacman-ot/tool-call-evidence-ledger">Source</a>
+      </nav>
+    </header>
+
+    <section class="intro">
+      <h1>See the chain hold, then break it</h1>
+      <p>
+        Each tool call is hashed with the previous entry. This demo keeps the ledger in the browser
+        and posts it with every request, so serverless instances cannot lose the session.
+      </p>
+    </section>
+
+    <div class="layout">
+      <aside class="panel" aria-label="Demo steps">
+        <nav class="steps" id="stepNav">
+          <button type="button" class="step-link" data-step="1" aria-current="step"><span class="n">01</span> Question</button>
+          <button type="button" class="step-link" data-step="2"><span class="n">02</span> Tool calls</button>
+          <button type="button" class="step-link" data-step="3"><span class="n">03</span> Ledger trail</button>
+          <button type="button" class="step-link" data-step="4"><span class="n">04</span> Verify chain</button>
+          <button type="button" class="step-link" data-step="5"><span class="n">05</span> Tamper</button>
+          <button type="button" class="step-link" data-step="6"><span class="n">06</span> Answer claims</button>
+        </nav>
+      </aside>
+
+      <main class="work" id="work">
+        <div id="errorBox" class="error-box" hidden></div>
+
+        <section class="panel" data-panel="1">
+          <div class="section-head">
+            <h2>Agent question</h2>
+            <span class="chip chip-amber">person</span>
+          </div>
+          <p class="hint">Pick a preset or edit the question. The tools below will answer it with recorded evidence.</p>
+          <label class="field-label" for="preset">Preset</label>
+          <select id="preset"></select>
+          <div style="height: var(--space-sm)"></div>
+          <label class="field-label" for="question">Question</label>
+          <textarea id="question" rows="3"></textarea>
+          <div class="row" style="margin-top: var(--space-sm)">
+            <button type="button" class="btn btn-primary" id="btnNext1">Continue to tools</button>
+            <button type="button" class="btn" id="btnOneShot">Run full scenario</button>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="2" hidden>
+          <div class="section-head">
+            <h2>Record tool calls</h2>
+            <span class="chip chip-cool">instrument</span>
+          </div>
+          <p class="hint">Each invoke appends a hashed entry. The previous hash links to GENESIS_V1, then to every later entry.</p>
+          <pre class="payload" id="callsPreview"></pre>
+          <div class="row" style="margin-top: var(--space-sm)">
+            <button type="button" class="btn btn-primary" id="btnRunCalls">Run tool calls</button>
+            <button type="button" class="btn" id="btnReset">Reset ledger</button>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="3" hidden>
+          <div class="section-head">
+            <h2>Ledger trail</h2>
+            <span class="chip" id="entryCount">0 entries</span>
+          </div>
+          <p class="hint">Hashes are SHA-256 over a deterministic JSON payload. Cool text is what the instrument wrote.</p>
+          <div id="trailEmpty" class="empty">No entries yet. Run tool calls first.</div>
+          <ol class="trail" id="trail" hidden></ol>
+        </section>
+
+        <section class="panel" data-panel="4" hidden>
+          <div class="section-head">
+            <h2>Verify the chain</h2>
+          </div>
+          <p class="hint">Recompute every entry hash and previous-hash link. An intact chain reports VALID.</p>
+          <div class="row">
+            <button type="button" class="btn btn-primary" id="btnVerify">Verify chain</button>
+          </div>
+          <div style="height: var(--space-sm)"></div>
+          <div id="verifyBanner" class="status-banner" hidden>
+            <span class="label" id="verifyStatus">:</span>
+            <span class="chip" id="verifyMeta"></span>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="5" hidden>
+          <div class="section-head">
+            <h2>Tamper with an entry</h2>
+          </div>
+          <p class="hint">Change a stored tool output without recomputing its hash. Verification should fail at that exact sequence.</p>
+          <div class="row">
+            <button type="button" class="btn btn-danger" id="btnTamper">Tamper entry 1</button>
+            <button type="button" class="btn" id="btnRestore" disabled>Restore honest ledger</button>
+          </div>
+          <div style="height: var(--space-sm)"></div>
+          <div id="tamperBanner" class="status-banner" hidden>
+            <span class="label" id="tamperStatus">:</span>
+            <span class="chip" id="tamperMeta"></span>
+          </div>
+          <p class="hint" id="tamperExplain" hidden></p>
+        </section>
+
+        <section class="panel" data-panel="6" hidden>
+          <div class="section-head">
+            <h2>Verify the answer</h2>
+            <span class="chip chip-amber">claims</span>
+          </div>
+          <p class="hint">Decompose the answer into claims and match them against ledger evidence. Try the unsupported sample too.</p>
+          <label class="field-label" for="answer">Agent answer</label>
+          <textarea id="answer" rows="3"></textarea>
+          <div class="row" style="margin-top: var(--space-sm)">
+            <button type="button" class="btn btn-primary" id="btnClaims">Check claims</button>
+            <button type="button" class="btn" id="btnUnsupported">Load unsupported answer</button>
+          </div>
+          <div style="height: var(--space-sm)"></div>
+          <div id="claimsOut" class="claims"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head"><h2>Why this works on Vercel</h2></div>
+          <ol class="notes">
+            <li>Serverless instances do not share /tmp, so a session created on one instance can vanish on the next request.</li>
+            <li>This UI posts the ledger entries with every /demo/* call (or runs the whole story via POST /demo/run).</li>
+            <li>No paid database is required for the demo.</li>
+          </ol>
+        </section>
+      </main>
+    </div>
+
+    <p class="footer-note">
+      Research prototype. SHA-256 linear chain. Genesis marker GENESIS_V1.
+      <span class="mono" id="healthVer"></span>
+    </p>
+  </div>
+
+  <script>
+  (() => {
+    const state = {
+      presets: [],
+      presetId: "orders",
+      calls: [],
+      question: "",
+      answer: "",
+      unsupported: "",
+      entries: [],
+      honestEntries: [],
+      sessionId: null,
+      failSeq: null,
+      step: 1,
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const errorBox = $("errorBox");
+
+    function showError(msg) {
+      if (!msg) { errorBox.hidden = true; errorBox.textContent = ""; return; }
+      errorBox.hidden = false;
+      errorBox.textContent = msg;
+    }
+
+    async function api(path, body) {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { detail: text }; }
+      if (!res.ok) throw new Error(data.detail || res.statusText || "request failed");
+      return data;
+    }
+
+    function setStep(n) {
+      state.step = n;
+      document.querySelectorAll(".step-link").forEach((btn) => {
+        const sn = Number(btn.dataset.step);
+        btn.setAttribute("aria-current", sn === n ? "step" : "false");
+        btn.classList.toggle("is-done", sn < n);
+      });
+      document.querySelectorAll("[data-panel]").forEach((panel) => {
+        const pn = Number(panel.dataset.panel);
+        panel.hidden = pn > n && !(pn <= Math.max(n, state.entries.length ? 3 : 1));
+        // Reveal panels up through current step
+        panel.hidden = pn > n;
+      });
+    }
+
+    function shortHash(h) {
+      if (!h) return "-";
+      return h.length > 20 ? h.slice(0, 10) + "…" + h.slice(-8) : h;
+    }
+
+    function renderTrail() {
+      const trail = $("trail");
+      const empty = $("trailEmpty");
+      $("entryCount").textContent = state.entries.length + " entr" + (state.entries.length === 1 ? "y" : "ies");
+      if (!state.entries.length) {
+        trail.hidden = true;
+        empty.hidden = false;
+        trail.innerHTML = "";
+        return;
+      }
+      empty.hidden = true;
+      trail.hidden = false;
+      trail.innerHTML = state.entries.map((e) => {
+        const fail = state.failSeq != null && e.sequence_no === state.failSeq;
+        return `<li class="${fail ? "is-fail" : ""}">
+          <div class="trail-meta">
+            <span class="chip chip-cool">#${e.sequence_no}</span>
+            <span class="trail-tool">${e.tool_name}</span>
+            <span class="chip">${e.status}</span>
+            ${fail ? '<span class="chip chip-bad">break here</span>' : ""}
+          </div>
+          <div class="mono">prev ${shortHash(e.previous_hash)}</div>
+          <div class="mono">hash ${shortHash(e.entry_hash)}</div>
+          <pre class="payload" style="margin-top:8px">${escapeHtml(JSON.stringify({ input: e.input_json, output: e.output_json }, null, 2))}</pre>
+        </li>`;
+      }).join("");
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    }
+
+    function applyPreset(p) {
+      state.presetId = p.id;
+      state.question = p.question;
+      state.calls = p.calls;
+      state.answer = p.answer;
+      state.unsupported = p.unsupported_answer;
+      $("question").value = p.question;
+      $("answer").value = p.answer;
+      $("callsPreview").textContent = JSON.stringify(p.calls, null, 2);
+    }
+
+    function resetLedger() {
+      state.entries = [];
+      state.honestEntries = [];
+      state.sessionId = null;
+      state.failSeq = null;
+      $("verifyBanner").hidden = true;
+      $("tamperBanner").hidden = true;
+      $("tamperExplain").hidden = true;
+      $("btnRestore").disabled = true;
+      $("claimsOut").innerHTML = "";
+      renderTrail();
+    }
+
+    async function loadPresets() {
+      const res = await fetch("/demo/presets");
+      const data = await res.json();
+      state.presets = data.presets || [];
+      const sel = $("preset");
+      sel.innerHTML = state.presets.map((p) => `<option value="${p.id}">${p.id} : ${escapeHtml(p.question.slice(0, 48))}</option>`).join("");
+      applyPreset(state.presets[0]);
+    }
+
+    async function runCalls() {
+      showError("");
+      $("work").classList.add("is-loading");
+      try {
+        resetLedger();
+        let entries = [];
+        let sid = null;
+        for (const call of state.calls) {
+          const data = await api("/demo/invoke", {
+            session_id: sid,
+            entries,
+            tool_name: call.tool_name,
+            args: call.args,
+          });
+          entries = data.entries;
+          sid = data.session_id;
+        }
+        state.entries = entries;
+        state.honestEntries = structuredClone(entries);
+        state.sessionId = sid;
+        renderTrail();
+        setStep(3);
+      } catch (err) {
+        showError(String(err.message || err));
+      } finally {
+        $("work").classList.remove("is-loading");
+      }
+    }
+
+    async function verify() {
+      showError("");
+      try {
+        const data = await api("/demo/verify", { entries: state.entries, session_id: state.sessionId });
+        const v = data.verify;
+        const banner = $("verifyBanner");
+        banner.hidden = false;
+        banner.className = "status-banner " + (v.status === "VALID" ? "valid" : "invalid");
+        $("verifyStatus").textContent = v.status;
+        $("verifyMeta").textContent = v.status === "VALID"
+          ? `${v.entries_checked} entries · head ${shortHash(v.chain_head)}`
+          : `fail @ seq ${v.first_failing_sequence} · ${v.reason}`;
+        state.failSeq = v.status === "INVALID" ? v.first_failing_sequence : null;
+        renderTrail();
+        setStep(Math.max(state.step, 4));
+      } catch (err) {
+        showError(String(err.message || err));
+      }
+    }
+
+    async function tamper() {
+      showError("");
+      try {
+        const data = await api("/demo/tamper", {
+          entries: state.honestEntries.length ? state.honestEntries : state.entries,
+          sequence_no: 1,
+          output_patch: { count: 999 },
+        });
+        state.entries = data.entries;
+        const v = data.verify_after;
+        const banner = $("tamperBanner");
+        banner.hidden = false;
+        banner.className = "status-banner " + (v.status === "VALID" ? "valid" : "invalid");
+        $("tamperStatus").textContent = v.status;
+        $("tamperMeta").textContent = `first failing sequence ${v.first_failing_sequence} · ${v.reason}`;
+        $("tamperExplain").hidden = false;
+        $("tamperExplain").textContent = data.explanation;
+        state.failSeq = v.first_failing_sequence;
+        $("btnRestore").disabled = false;
+        renderTrail();
+        setStep(Math.max(state.step, 5));
+      } catch (err) {
+        showError(String(err.message || err));
+      }
+    }
+
+    function restore() {
+      state.entries = structuredClone(state.honestEntries);
+      state.failSeq = null;
+      $("tamperBanner").hidden = true;
+      $("tamperExplain").hidden = true;
+      $("btnRestore").disabled = true;
+      $("verifyBanner").hidden = true;
+      renderTrail();
+    }
+
+    async function checkClaims() {
+      showError("");
+      try {
+        const data = await api("/demo/verify-answer", {
+          entries: state.honestEntries.length ? state.honestEntries : state.entries,
+          answer: $("answer").value,
+          session_id: state.sessionId,
+        });
+        const out = $("claimsOut");
+        const claims = data.claims || [];
+        if (!claims.length) {
+          out.innerHTML = '<div class="empty">No claims returned.</div>';
+          return;
+        }
+        out.innerHTML = claims.map((c) => {
+          const chip = c.verdict === "SUPPORTED" ? "chip-ok" : c.verdict === "UNSUPPORTED" ? "chip-bad" : "chip-amber";
+          const ev = (c.evidence || []).map((e) => `${e.entry_id}:${e.field_path}`).join(", ") || "none";
+          return `<article class="claim">
+            <div class="claim-head">
+              <span class="chip ${chip}">${c.verdict}</span>
+              <span class="chip">${c.claim_type}</span>
+              <span class="chip chip-cool">${c.method}</span>
+            </div>
+            <p>${escapeHtml(c.claim_text)}</p>
+            <p class="hint" style="margin-top:6px">Evidence: <span class="mono">${escapeHtml(ev)}</span></p>
+            ${c.rationale ? `<p class="hint">${escapeHtml(c.rationale)}</p>` : ""}
+          </article>`;
+        }).join("") + `<p class="hint">Aggregate: <strong>${escapeHtml(data.aggregate_status)}</strong></p>`;
+        setStep(6);
+      } catch (err) {
+        showError(String(err.message || err));
+      }
+    }
+
+    async function oneShot() {
+      showError("");
+      $("work").classList.add("is-loading");
+      try {
+        const data = await api("/demo/run", {
+          question: $("question").value,
+          calls: state.calls,
+          answer: $("answer").value || state.answer,
+          include_tamper: true,
+          tamper_sequence: 1,
+          tamper_output_patch: { count: 999 },
+        });
+        state.sessionId = data.session_id;
+        state.entries = data.entries;
+        state.honestEntries = structuredClone(data.entries);
+        state.failSeq = null;
+        renderTrail();
+
+        // show verify
+        const v = data.verify;
+        const banner = $("verifyBanner");
+        banner.hidden = false;
+        banner.className = "status-banner valid";
+        $("verifyStatus").textContent = v.status;
+        $("verifyMeta").textContent = `${v.entries_checked} entries · head ${shortHash(v.chain_head)}`;
+
+        // show tamper if present
+        if (data.tamper) {
+          state.entries = data.tamper.entries;
+          state.failSeq = data.tamper.verify.first_failing_sequence;
+          const tb = $("tamperBanner");
+          tb.hidden = false;
+          tb.className = "status-banner invalid";
+          $("tamperStatus").textContent = data.tamper.verify.status;
+          $("tamperMeta").textContent = `first failing sequence ${data.tamper.verify.first_failing_sequence} · ${data.tamper.verify.reason}`;
+          $("tamperExplain").hidden = false;
+          $("tamperExplain").textContent = data.tamper.explanation;
+          $("btnRestore").disabled = false;
+          renderTrail();
+        }
+
+        // claims from honest chain
+        const claims = (data.answer_report && data.answer_report.claims) || [];
+        $("claimsOut").innerHTML = claims.map((c) => {
+          const chip = c.verdict === "SUPPORTED" ? "chip-ok" : c.verdict === "UNSUPPORTED" ? "chip-bad" : "chip-amber";
+          return `<article class="claim">
+            <div class="claim-head"><span class="chip ${chip}">${c.verdict}</span><span class="chip">${c.claim_type}</span></div>
+            <p>${escapeHtml(c.claim_text)}</p>
+          </article>`;
+        }).join("");
+
+        setStep(6);
+      } catch (err) {
+        showError(String(err.message || err));
+      } finally {
+        $("work").classList.remove("is-loading");
+      }
+    }
+
+    // Wire UI
+    document.querySelectorAll(".step-link").forEach((btn) => {
+      btn.addEventListener("click", () => setStep(Number(btn.dataset.step)));
+    });
+    $("preset").addEventListener("change", (e) => {
+      const p = state.presets.find((x) => x.id === e.target.value);
+      if (p) applyPreset(p);
+    });
+    $("question").addEventListener("input", (e) => { state.question = e.target.value; });
+    $("btnNext1").addEventListener("click", () => setStep(2));
+    $("btnRunCalls").addEventListener("click", runCalls);
+    $("btnReset").addEventListener("click", () => { resetLedger(); setStep(2); });
+    $("btnVerify").addEventListener("click", verify);
+    $("btnTamper").addEventListener("click", tamper);
+    $("btnRestore").addEventListener("click", restore);
+    $("btnClaims").addEventListener("click", checkClaims);
+    $("btnUnsupported").addEventListener("click", () => { $("answer").value = state.unsupported; });
+    $("btnOneShot").addEventListener("click", oneShot);
+
+    loadPresets().catch((e) => showError(String(e)));
+    fetch("/health").then((r) => r.json()).then((h) => {
+      $("healthVer").textContent = "v" + (h.version || "?");
+    }).catch(() => {});
+    setStep(1);
+    renderTrail();
+  })();
+  </script>
+</body>
+</html>

@@ -23,6 +23,12 @@ Live HTTP demo (ephemeral storage): https://tool-call-evidence-ledger.vercel.app
 
 ---
 
+## Live demo
+
+Open the deployed UI at the project root (`/`). It walks question → tool calls → hash chain → VALID → tamper → INVALID → claim checks.
+
+On Vercel, `/tmp` SQLite is not shared across serverless instances. Prefer the **stateless** `/demo/*` endpoints (the UI does this automatically), or `POST /demo/run` for a one-request full scenario.
+
 ## Install
 
 Requires **Python ≥ 3.11**.
